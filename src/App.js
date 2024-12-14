@@ -1,17 +1,17 @@
-import { useEffect, useState, useCallback } from "react";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  createContext,
+  useContext,
+} from "react";
 import styles from "./app.module.css";
 import { db } from "./firebase";
 import { ref, onValue, push, update, remove } from "firebase/database";
 
-const debounce = (func, delay) => {
-  let timeout;
-  return (...args) => {
-    clearTimeout(timeout);
-    timeout = setTimeout(() => func(...args), delay);
-  };
-};
+const TodoContext = createContext();
 
-export const App = () => {
+const TodoProvider = ({ children }) => {
   const [todos, setTodos] = useState([]);
   const [filteredTodos, setFilteredTodos] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -19,7 +19,6 @@ export const App = () => {
   const [error, setError] = useState(null);
   const [sortByAlphabet, setSortByAlphabet] = useState(false);
 
-  // Загрузка данных из Firebase
   useEffect(() => {
     const todosRef = ref(db, "todos");
     const unsubscribe = onValue(
@@ -39,55 +38,122 @@ export const App = () => {
         }
         setLoading(false);
       },
-      (error) => {
+      () => {
         setError("Ошибка загрузки данных");
         setLoading(false);
       }
     );
 
-    return () => unsubscribe(); // Отписываемся от событий при размонтировании
+    return () => unsubscribe();
   }, []);
 
-  const handleSearch = useCallback(
-    debounce((query) => {
-      const filtered = todos.filter((todo) =>
-        todo.title.toLowerCase().includes(query.toLowerCase())
+  const addTodo = async (title) => {
+    try {
+      const todosRef = ref(db, "todos");
+      await push(todosRef, { title, completed: false });
+    } catch (error) {
+      console.error("Ошибка при добавлении задачи:", error);
+      alert("Не удалось добавить задачу");
+    }
+  };
+
+  const updateTodo = async (id, updatedData) => {
+    try {
+      const todoRef = ref(db, `todos/${id}`);
+      await update(todoRef, updatedData);
+    } catch (error) {
+      console.error("Ошибка при обновлении задачи:", error);
+      alert("Не удалось обновить задачу");
+    }
+  };
+
+  const deleteTodo = async (id) => {
+    try {
+      const todoRef = ref(db, `todos/${id}`);
+      await remove(todoRef);
+    } catch (error) {
+      console.error("Ошибка при удалении задачи:", error);
+      alert("Не удалось удалить задачу");
+    }
+  };
+
+  const toggleSort = () => {
+    setSortByAlphabet((prev) => !prev);
+    setFilteredTodos((prevTodos) => {
+      const sortedTodos = [...prevTodos].sort((a, b) =>
+        a.title.localeCompare(b.title)
       );
-      setFilteredTodos(filtered);
+      return sortByAlphabet ? todos : sortedTodos;
+    });
+  };
+
+  return (
+    <TodoContext.Provider
+      value={{
+        todos,
+        filteredTodos,
+        searchQuery,
+        setSearchQuery,
+        loading,
+        error,
+        addTodo,
+        updateTodo,
+        deleteTodo,
+        toggleSort,
+        setFilteredTodos,
+      }}
+    >
+      {children}
+    </TodoContext.Provider>
+  );
+};
+
+const useTodos = () => useContext(TodoContext);
+
+export const App = () => {
+  return (
+    <TodoProvider>
+      <TodoApp />
+    </TodoProvider>
+  );
+};
+
+const TodoApp = () => {
+  const {
+    filteredTodos,
+    searchQuery,
+    setSearchQuery,
+    loading,
+    error,
+    addTodo,
+    updateTodo,
+    deleteTodo,
+    toggleSort,
+  } = useTodos();
+
+  const debounce = (func, delay) => {
+    let timeout;
+    return (...args) => {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => func(...args), delay);
+    };
+  };
+
+  const debouncedSearch = useCallback(
+    debounce((query, todos, setFilteredTodos) => {
+      setFilteredTodos(
+        todos.filter((todo) =>
+          todo.title.toLowerCase().includes(query.toLowerCase())
+        )
+      );
     }, 500),
-    [todos]
+    []
   );
 
   const onSearchChange = (e) => {
     const query = e.target.value;
     setSearchQuery(query);
-    handleSearch(query);
-  };
-
-  const toggleSort = () => {
-    setSortByAlphabet(!sortByAlphabet);
-    if (!sortByAlphabet) {
-      setFilteredTodos((prevTodos) =>
-        [...prevTodos].sort((a, b) => a.title.localeCompare(b.title))
-      );
-    } else {
-      setFilteredTodos(todos);
-    }
-  };
-
-  const addTodo = (title) => {
-    const todosRef = ref(db, "todos");
-    push(todosRef, { title, completed: false });
-  };
-
-  const updateTodo = (id, updatedData) => {
-    const todoRef = ref(db, `todos/${id}`);
-    update(todoRef, updatedData);
-  };
-
-  const deleteTodo = (id) => {
-    const todoRef = ref(db, `todos/${id}`);
-    remove(todoRef);
+    debouncedSearch(query, filteredTodos, setFilteredTodos);
   };
 
   if (loading) {
@@ -113,12 +179,15 @@ export const App = () => {
 
       {/* Кнопка сортировки */}
       <button onClick={toggleSort} className={styles.sortButton}>
-        {sortByAlphabet ? "Отключить сортировку" : "Сортировать по алфавиту"}
+        Сортировать
       </button>
 
       {/* Добавление новой задачи */}
       <button
-        onClick={() => addTodo(prompt("Введите название задачи"))}
+        onClick={() => {
+          const title = prompt("Введите название задачи");
+          if (title) addTodo(title);
+        }}
         className={styles.addButton}
       >
         Добавить задачу
