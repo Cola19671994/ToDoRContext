@@ -1,0 +1,24 @@
+.todoList {
+  list-style: none;
+  padding: 0;
+}
+
+.todoList li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px;
+  border-bottom: 1px solid #ccc;
+}
+
+.todoList li span {
+  cursor: pointer;
+}
+
+.todoList li button {
+  background-color: red;
+  color: white;
+  border: none;
+  padding: 5px 10px;
+  cursor: pointer;
+}
